@@ -86,6 +86,37 @@ public class CellActor : StreamableActor
         _world = worldAsset.WithoutOwner();
     }
 
+    public CellActor(ULevelStreaming streaming, string longPackageName, Transform transform) : base(streaming, false)
+    {
+        EnqueueOnLoad = false;
+        Components.Add(new SpatialComponent(transform, "CellRoot"));
+        DataLayers = [];
+        _world = UsableWorldAsset(streaming.WorldAsset) ?? SoftWorldPath(longPackageName);
+    }
+
+    public CellActor(string name, FSoftObjectPath world, Transform transform) : base(name, world, false)
+    {
+        EnqueueOnLoad = false;
+        Components.Add(new SpatialComponent(transform, "CellRoot"));
+        DataLayers = [];
+        _world = world;
+    }
+
+    internal static FSoftObjectPath SoftWorldPath(string longPackageName)
+    {
+        var slash = longPackageName.LastIndexOf('/');
+        var shortName = slash >= 0 ? longPackageName[(slash + 1)..] : longPackageName;
+        return new FSoftObjectPath($"{longPackageName}.{shortName}", string.Empty);
+    }
+
+    private static FSoftObjectPath? UsableWorldAsset(FSoftObjectPath? asset)
+    {
+        if (asset is not { } path) return null;
+        var text = path.AssetPathName.Text;
+        if (string.IsNullOrEmpty(text) || text.Equals("None", StringComparison.OrdinalIgnoreCase)) return null;
+        return path.WithoutOwner();
+    }
+
     protected override CullingBounds? LoadingBounds
     {
         get

@@ -41,6 +41,12 @@ public abstract class TreeNode : IControllable, ICloneable, IEquatable<TreeNode>
         Type = GetType().Name;
     }
 
+    protected TreeNode(string name, FSoftObjectPath softObject) : this(name)
+    {
+        _object = softObject;
+        Path = LongPackageName(softObject.AssetPathName.Text);
+    }
+
     protected TreeNode(UObject owner) : this(owner.Name)
     {
         if (owner is AActor a && !string.IsNullOrEmpty(a.ActorLabel))
@@ -75,6 +81,13 @@ public abstract class TreeNode : IControllable, ICloneable, IEquatable<TreeNode>
             }
             return [.. jsonProperties];
         }
+    }
+
+    private static string LongPackageName(string assetPath)
+    {
+        var slash = assetPath.LastIndexOf('/');
+        var dot = assetPath.LastIndexOf('.');
+        return dot > slash ? assetPath[..dot] : assetPath;
     }
 
     protected void SetIcon(string icon) => Icon = icon;

@@ -1,6 +1,7 @@
 using CUE4Parse_Conversion;
 using CUE4Parse.UE4.Assets.Exports;
 using CUE4Parse.UE4.Assets.Exports.Actor;
+using CUE4Parse.UE4.Objects.UObject;
 using Serilog;
 using Snooper.Core;
 using Snooper.Core.Managers;
@@ -29,6 +30,12 @@ public class Actor : TreeNode
     }
 
     public Actor(string name) : base(name)
+    {
+        Components = new ActorComponentCollection(this);
+        Children = new ActorChildrenCollection(this);
+    }
+
+    protected Actor(string name, FSoftObjectPath softObject) : base(name, softObject)
     {
         Components = new ActorComponentCollection(this);
         Children = new ActorChildrenCollection(this);

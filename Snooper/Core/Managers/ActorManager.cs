@@ -64,6 +64,95 @@ public abstract class ActorManager(IFileProvider fileProvider) : IGameSystem, IM
 
         TextureCache.Update(Budget);
         ThreadManager.Update();
+        LoadNext();
+    }
+
+    private readonly List<WorldCompositionActor> _compositions = [];
+    private WorldCompositionActor? _tileProgress;
+
+    private void LoadNext()
+    {
+        if (_entering.Count > 0 || !Streaming.IsIdle || _systemsToLoad.Count > 0)
+            return;
+
+        // A finished bar stays up for Progress.Linger. Reporting again below Total would cancel its toast.
+        foreach (var operation in Progress.Active)
+        {
+            if (operation.Key == "work.tiles" && operation.IsFinished)
+                return;
+        }
+
+        foreach (var composition in _compositions)
+        {
+            CellActor? next = null;
+            var hasUnloaded = false;
+            foreach (var child in composition.Children)
+            {
+                if (child is not CellActor cell || cell.State != EStreamingState.Unloaded)
+                    continue;
+
+                hasUnloaded = true;
+                if (next == null && cell.CanLoad)
+                    next = cell;
+            }
+
+            if (!hasUnloaded)
+                continue;
+
+            if (next != null)
+                StartTile(composition, next);
+            return;
+        }
+
+        foreach (var composition in _compositions)
+        {
+            foreach (var child in composition.Children)
+            {
+                if (child is not CellActor cell || cell.State != EStreamingState.Failed || !cell.RequestsRetry || !cell.CanLoad)
+                    continue;
+
+                StartTile(composition, cell);
+                return;
+            }
+        }
+
+        if (_tileProgress == null)
+            return;
+
+        ReportTiles(_tileProgress);
+        _tileProgress = null;
+    }
+
+    private void StartTile(WorldCompositionActor composition, CellActor cell)
+    {
+        cell.BeginLoad();
+        _tileProgress = composition;
+        ReportTiles(composition);
+    }
+
+    private static void ReportTiles(WorldCompositionActor composition)
+    {
+        var total = 0;
+        var loaded = 0;
+        var failed = 0;
+        foreach (var child in composition.Children)
+        {
+            if (child is not CellActor cell)
+                continue;
+
+            total++;
+            if (cell.IsLoaded)
+                loaded++;
+            else if (cell.State == EStreamingState.Failed)
+                failed++;
+        }
+
+        if (total == 0)
+            return;
+
+        var done = loaded + failed;
+        var completed = done >= total ? $"Tiles loaded, {failed:N0} failed" : null;
+        Progress.Report("work.tiles", Settings.CubesIcon, "Loading tiles", done, total, completed);
     }
 
     public abstract void Render();
@@ -153,6 +242,9 @@ public abstract class ActorManager(IFileProvider fileProvider) : IGameSystem, IM
         if (actor is StreamableActor streamable && (streamable.IsPersistent || streamable.Wanted))
             streamable.Load();
 
+        if (actor is WorldCompositionActor composition && !_compositions.Contains(composition))
+            _compositions.Add(composition);
+
         Log.Verbose("{Actor} entered the scene", actor.Name);
     }
 
@@ -160,6 +252,13 @@ public abstract class ActorManager(IFileProvider fileProvider) : IGameSystem, IM
     {
         ActorCount--;
         IncrementRevision();
+
+        if (actor is WorldCompositionActor composition)
+        {
+            _compositions.Remove(composition);
+            if (_tileProgress == composition)
+                _tileProgress = null;
+        }
 
         Log.Verbose("{Actor} left the scene", actor.Name);
     }
@@ -317,6 +416,8 @@ public abstract class ActorManager(IFileProvider fileProvider) : IGameSystem, IM
         Streaming.Clear();
         _entering.Clear();
         _enteringTotal = _enteringDone = 0;
+        _compositions.Clear();
+        _tileProgress = null;
 
         Progress.Clear();
         WindowRequests.Clear();
